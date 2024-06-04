@@ -18,6 +18,13 @@ file_path <- "C:/Users/kfrei/OneDrive - Ostbayerische Technische Hochschule Rege
 data <- read.csv(file_path)
 
 ################################################################################
+# Hyperparameters
+################################################################################
+
+cv_folds = 10
+prob_threshold <- 0.5
+
+################################################################################
 # Basic Exploration of the Dataset
 ################################################################################
 
@@ -115,11 +122,16 @@ df_pca_test$Y
 # SELECT DATA (Raw or PCA)
 ################################################################################
 
-df_train = df_pca_train
-df_test = df_pca_test
+# Select if you want to proceed with the raw data or with the PCA-reduced data
+df_train = df_pca_train; df_test = df_pca_test
+# df_train = df_train;     df_test = df_test
 
-# df_train = df_train
-# df_test = df_test
+# Further Processing of the selected data
+x_train <- as.matrix(df_train[, -ncol(df_train)])
+y_train <- as.factor(df_train$Y)
+
+x_test <- as.matrix(df_test[, -ncol(df_test)])
+y_test <- as.factor(df_test$Y)
 
 ################################################################################
 # KNN
@@ -146,91 +158,63 @@ plot(k_values, accuracy_scores, type = "b", pch = 19, col = "blue", xlab = "Numb
 # Train the model with the best k
 test_pred <- knn(train = x_train, test = x_test, cl = y_train, k = best_k)
 
-cm <- table(y_test, test_pred)
-cat("Confusion Matrix for the best k:\n")
-print(cm)
+################################################################################
+# Logistic Regression
+################################################################################
 
-true_positives <- final_cm[2, 2]
-false_positives <- final_cm[1, 2]
-false_negatives <- final_cm[2, 1]
-true_negatives <- final_cm[1, 1]
+alpha_values <- seq(0.0, 1.0, by = 0.1)
+results <- list()
 
-accuracy <- sum(diag(cm)) / sum(cm)
+for (alpha in alpha_values) {
+  cv_fit <- cv.glmnet(
+    x_train, y_train, 
+    family = "binomial", 
+    type.measure = "class",
+    alpha = alpha, 
+    nfolds = cv_folds
+    )
+  results[[paste("Alpha", alpha)]] <- list(alpha = alpha, cv_fit = cv_fit, lambda_min = cv_fit$lambda.min)
+}
+
+# Find the alpha with the lowest CV error
+best_result <- sapply(results, function(x) min(x$cv_fit$cvm))
+best_alpha <- alpha_values[which.min(best_result)]
+
+cat("Best alpha:", best_alpha, "\n")
+# Re-run the model with the best alpha
+best_cv_fit <- results[[paste("Alpha", best_alpha)]]$cv_fit
+best_lambda <- best_cv_fit$lambda.min
+
+plot(best_cv_fit)
+
+# Fit the final model with the best alpha and lambda
+final_model <- glmnet(
+  x_train, y_train, 
+  family = "binomial", 
+  alpha = best_alpha, 
+  lambda = best_lambda
+  )
+
+# Make predictions
+test_pred_prob <- predict(final_model, newx = x_test, type = "response")
+test_pred <- ifelse(pred_prob > prob_threshold, 1, 0)
+
+################################################################################
+# Model Evaluation
+################################################################################
+
+conf_matrix <- table(Predicted=y_test, Actual=test_pred)
+print(conf_matrix)
+
+true_positives <- conf_matrix[2, 2]
+false_positives <- conf_matrix[1, 2]
+false_negatives <- conf_matrix[2, 1]
+true_negatives <- conf_matrix[1, 1]
+
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
 precision <- true_positives / (true_positives + false_positives)
 recall <- true_positives / (true_positives + false_negatives)
 f1_score <- 2 * (precision * recall) / (precision + recall)
 
 cat("Accuracy:", accuracy, "\n")
 cat("F1 Score:", f1_score, "\n")
-
-################################################################################
-# Logistic Regression
-################################################################################
-
-# Prepare matrix of predictors and response variable vector
-x_matrix <- model.matrix(Y ~ . - 1, data = df_train) # -1 to exclude intercept
-y_vector <- df_train$Y
-
-# Fit regularized logistic regression model using glmnet
-# alpha = 1 for lasso, alpha = 0 for ridge, values in between for elastic net
-glmnet_model <- glmnet(x_matrix, as.numeric(y_vector) - 1, family = "binomial", alpha = 1)
-
-# Optionally, use cross-validation to find the best lambda
-cv_model <- cv.glmnet(x_matrix, as.numeric(y_vector) - 1, family = "binomial", type.measure = "class")
-plot(cv_model)
-
-# Best lambda value
-best_lambda <- cv_model$lambda.min
-cat("Best Lambda:", best_lambda, "\n")
-
-# Predict using the model with the best lambda
-predicted_probabilities <- predict(glmnet_model, s = best_lambda, newx = model.matrix(Y ~ . - 1, data = df_test), type = "response")
-predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
-
-# Evaluate performance
-conf_matrix <- table(Predicted = predicted_classes, Actual = df_test$Y)
-print(conf_matrix)
-accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
-cat("Accuracy with best lambda:", accuracy, "\n")
-
-################################################################################
-# Model training and testing
-################################################################################
-
-# Train a logistic regression classifier with cross-validation
-# control <- trainControl(method = "cv", number = 10, savePredictions = "final")
-# model <- train(Y ~ ., data = train_data, method = "glm", trControl = control, family = "binomial")
-lr_pca_models <- list()
-alphas = seq(0.0, 1.0, by = 0.1)
-
-for (alpha in alphas){
-  lr_pca_model = cv.glmnet(X_pca, df_pca$Y, family="binomial", type.measure = "auc", alpha = alpha)
-  lr_pca_models[[as.character(alpha)]] <- lr_pca_model
-}
-
-best_alpha_lasso <- alphas[which.max(sapply(lr_lasso_models, function(m) m$cvm[which.max(m$cvm)]))]
-best_alpha_lasso
-
-lr_lasso_model = lr_lasso_models[[as.character(best_alpha_lasso)]]
-lr_lasso_model
-coef(lr_lasso_model)
-
-predict_lr_lasso = predict(lr_lasso_model, newx = x_test_lasso, type="response")
-predict_lr_lasso
-
-# Train a model with Lasso regularization
-model <- train(Y ~ ., data = train_data, method = "glmnet", 
-                     trControl = control, family = "binomial",
-                     tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 0.1, length = 10)))
-
-# Predict on the test set
-y_pred <- predict(model, newdata = test_data)
-
-# Evaluate the model's accuracy
-accuracy <- sum(y_pred == test_data$Y) / nrow(test_data)
-print(paste('Accuracy:', round(accuracy, 2)))
-
-# Evaluate with additional metrics
-confusionMatrix <- confusionMatrix(predict(model, newdata = test_data), test_data$Y)
-print(confusionMatrix)
-
