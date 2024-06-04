@@ -1,0 +1,3 @@
+data set su diversi tipi di leucemie (Leukemia), contenente un campione di 72 elementi con 3571 espressioni geniche, in cui sono presenti due tipologie di leucemia
+
+data set on different types of leukemia (Leukemia), containing a sample of 72 items with 3571 gene expressions, in which there are two types of leukemia

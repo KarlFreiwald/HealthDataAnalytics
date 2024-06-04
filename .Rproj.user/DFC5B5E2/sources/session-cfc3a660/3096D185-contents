@@ -1,0 +1,102 @@
+
+# Load necessary libraries
+library(tidyverse)
+library(caret)
+library(e1071)
+
+# Load the data
+file_path <- "C:/Users/kfrei/OneDrive - Ostbayerische Technische Hochschule Regensburg/Desktop/HDA_project/data/leukemia.csv"
+df <- read.csv(file_path)
+
+################################################################################
+# Basic exploration of the dataset
+################################################################################
+
+# print("Basic structure of the dataset:")
+# print(str(df))
+
+# print("Summary of the dataset:")
+# print(summary(df))
+
+# print("Checking for missing values:")
+# print(colSums(is.na(df)))
+
+# Visualizing the target variable distribution
+print("Distribution of the target variable (Y):")
+print(table(df$Y))
+ggplot(df, aes(x = factor(Y))) +
+  geom_bar() +
+  labs(title = "Distribution of the Target Variable", x = "Y", y = "Count")
+
+################################################################################
+# Preprocessing
+################################################################################
+
+# Separate the features and the target variable
+X <- df %>% select(-Y)
+y <- df$Y
+
+# Standardize the data
+X_scaled <- scale(X)
+
+# It turns out that less flexible models, such as 
+# - forward stepwise selection
+# - ridge regression
+# - lasso
+# - principal components regression
+# are particularly useful for performing regression in the high-dimensional setting.
+
+################################################################################
+# PCA
+################################################################################
+
+pca <- prcomp(X_scaled, center = TRUE, scale. = TRUE)
+
+# Capture percentage of variance
+explained_variance <- cumsum(pca$sdev^2) / sum(pca$sdev^2)
+num_components <- which.min(abs(explained_variance - 0.99))
+
+# Fixed number of PCs
+# num_components <- 3
+
+# Select the required number of principal components
+X_pca <- pca$x[, 1:num_components]
+
+# Combine PCA result with the target variable
+df_pca <- as.data.frame(X_pca)
+df_pca$Y <- as.factor(y)
+
+################################################################################
+# Split the data into training and testing sets
+################################################################################
+
+set.seed(42)
+train_index <- createDataPartition(df_pca$Y, p = 0.7, list = FALSE)
+train_data <- df_pca[train_index, ]
+test_data <- df_pca[-train_index, ]
+
+################################################################################
+# Model training and testing
+################################################################################
+
+# Train a logistic regression classifier with cross-validation
+control <- trainControl(method = "cv", number = 5, savePredictions = "final")
+# model <- train(Y ~ ., data = train_data, method = "glm", trControl = control, family = "binomial")
+
+# Train a model with Lasso regularization
+model <- train(Y ~ ., data = train_data, method = "glmnet", 
+                     trControl = control, family = "binomial",
+                     tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 0.1, length = 10)))
+
+
+# Predict on the test set
+y_pred <- predict(model, newdata = test_data)
+
+# Evaluate the model's accuracy
+accuracy <- sum(y_pred == test_data$Y) / nrow(test_data)
+print(paste('Accuracy:', round(accuracy, 2)))
+
+# Evaluate with additional metrics
+confusionMatrix <- confusionMatrix(predict(model, newdata = test_data), test_data$Y)
+print(confusionMatrix)
+

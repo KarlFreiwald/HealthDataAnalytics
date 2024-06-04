@@ -1,0 +1,65 @@
+
+# Load necessary libraries
+library(tidyverse)
+
+# Load the data
+file_path <- "C:/Users/kfrei/OneDrive - Ostbayerische Technische Hochschule Regensburg/Desktop/HDA_project/data/PlasmaRegression.csv"
+plasma_data <- read.csv(file_path)
+
+################################################################################
+# Basic exploration of the dataset
+################################################################################
+
+# Basic information
+print(dim(plasma_data))
+print(head(plasma_data))
+print(str(plasma_data))
+print(summary(plasma_data))
+
+# Check for missing values
+print(colSums(is.na(plasma_data)))
+
+################################################################################
+# Preprocessing
+################################################################################
+
+# Convert categorical variables to factors
+plasma_data$sex <- as.factor(plasma_data$sex)
+plasma_data$smokstat <- as.factor(plasma_data$smokstat)
+
+# Convert factors to dummy variables
+plasma_data <- plasma_data %>%
+  mutate(across(c(sex, smokstat), as.factor)) %>%
+  mutate(dummy_sex = if_else(sex == "female", 1, 0),
+         dummy_smokstat_never = if_else(smokstat == "Never", 1, 0),
+         dummy_smokstat_former = if_else(smokstat == "Former", 1, 0),
+         dummy_smokstat_current = if_else(smokstat == "Current Smoker", 1, 0))
+
+# Visualize the relationship between dietary factors and plasma levels
+library(ggplot2)
+ggplot(plasma_data, aes(x = betadiet, y = betaplasma)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Relationship between Dietary Beta-Carotene and Plasma Beta-Carotene", x = "Dietary Beta-Carotene", y = "Plasma Beta-Carotene")
+
+ggplot(plasma_data, aes(x = retdiet, y = retplasma)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Relationship between Dietary Retinol and Plasma Retinol", x = "Dietary Retinol", y = "Plasma Retinol")
+
+# Prepare for regression analysis
+plasma_data_clean <- plasma_data %>%
+  select(-c(sex, smokstat))  # Remove original categorical columns
+
+################################################################################
+# Model training and testing
+################################################################################
+
+# Linear Regression for Plasma Beta-Carotene
+model_beta <- lm(betaplasma ~ ., data = plasma_data_clean)
+summary(model_beta)
+
+# Linear Regression for Plasma Retinol
+model_retinol <- lm(retplasma ~ ., data = plasma_data_clean)
+summary(model_retinol)
+
