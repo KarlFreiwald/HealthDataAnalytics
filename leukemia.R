@@ -12,6 +12,7 @@ library(fastDummies)
 library(plotly)
 library(class)
 library(glmnet)
+library(pROC)
 
 # Load the data
 file_path <- "C:/Users/kfrei/OneDrive - Ostbayerische Technische Hochschule Regensburg/Desktop/HDA_project/data/leukemia.csv"
@@ -21,15 +22,16 @@ data <- read.csv(file_path)
 # Hyperparameters
 ################################################################################
 
-cv_folds = 10
+cv_folds <- 10
 prob_threshold <- 0.5
+set.seed(123)
 
 ################################################################################
 # Basic Exploration of the Dataset
 ################################################################################
 
 num_samples <- nrow(data); num_samples
-num_features <- ncol(data); num_features
+num_features <- ncol(data)-1; num_features
 
 # names(data)
 # head(data)
@@ -48,7 +50,6 @@ ggplot(data, aes(x = factor(Y), fill = factor(Y))) +
 y = data$Y
 x = data[,-c(1)]
 
-set.seed(42)
 train_index <- createDataPartition(y, p = 0.7, list = FALSE)
 x_train <- x[train_index, ]
 x_test <- x[-train_index, ]
@@ -123,8 +124,8 @@ df_pca_test$Y
 ################################################################################
 
 # Select if you want to proceed with the raw data or with the PCA-reduced data
-df_train = df_pca_train; df_test = df_pca_test
-# df_train = df_train;     df_test = df_test
+# df_train = df_pca_train; df_test = df_pca_test
+df_train = df_train;     df_test = df_test
 
 # Further Processing of the selected data
 x_train <- as.matrix(df_train[, -ncol(df_train)])
@@ -162,8 +163,12 @@ test_pred <- knn(train = x_train, test = x_test, cl = y_train, k = best_k)
 # Logistic Regression
 ################################################################################
 
-alpha_values <- seq(0.0, 1.0, by = 0.1)
+# alpha_values <- (1.0)                   # LASSO
+# alpha_values <- (0.0)                   # Ridge
+alpha_values <- seq(0.0, 1.0, by = 0.1) # Elastic Net
 results <- list()
+
+# Maybe try AIC / BIC to select best alpha
 
 for (alpha in alpha_values) {
   cv_fit <- cv.glmnet(
@@ -178,9 +183,8 @@ for (alpha in alpha_values) {
 
 # Find the alpha with the lowest CV error
 best_result <- sapply(results, function(x) min(x$cv_fit$cvm))
-best_alpha <- alpha_values[which.min(best_result)]
+best_alpha <- alpha_values[which.min(best_result)]; best_alpha
 
-cat("Best alpha:", best_alpha, "\n")
 # Re-run the model with the best alpha
 best_cv_fit <- results[[paste("Alpha", best_alpha)]]$cv_fit
 best_lambda <- best_cv_fit$lambda.min
@@ -195,9 +199,16 @@ final_model <- glmnet(
   lambda = best_lambda
   )
 
+coefficients <- coef(final_model, s = best_lambda)
+coefficients_df <- as.matrix(coefficients)
+non_zero_coefficients <- coefficients_df[coefficients_df != 0, , drop = FALSE]
+# Note: Removing the intercept if it is not of interest, otherwise include it
+non_zero_named <- non_zero_coefficients[-1, , drop = FALSE]  # Assuming first entry is intercept
+print(length(non_zero_named))
+
 # Make predictions
 test_pred_prob <- predict(final_model, newx = x_test, type = "response")
-test_pred <- ifelse(pred_prob > prob_threshold, 1, 0)
+test_pred <- ifelse(test_pred_prob > prob_threshold, 1, 0)
 
 ################################################################################
 # Model Evaluation
@@ -218,3 +229,43 @@ f1_score <- 2 * (precision * recall) / (precision + recall)
 
 cat("Accuracy:", accuracy, "\n")
 cat("F1 Score:", f1_score, "\n")
+
+# Visualizations
+show_roc_curve <- function(predict_value, true_value, model_name){
+  predict_ROC <- roc(true_value, as.numeric(predict_value))
+  dev.new(title=paste("ROC Curve ",model_name))
+  plot(predict_ROC)
+  auc_value <- auc(predict_ROC)
+  text(x = 0.6, y = 0.2, labels = paste("AUC =", round(auc_value, 3)), col = "red")
+}
+
+show_confusion_matrix <- function(predict_value, true_value, model_name){
+  conf_matrix <- confusionMatrix(true_value, predict_value)
+  
+  cm <- as.data.frame(as.table(conf_matrix$table))
+  
+  colnames(cm) <- c("Reference", "Prediction", "Freq")
+  
+  dev.new(title = paste("Confusion Matrix",model_name))
+  ggplot(cm, aes(x = Reference, y = Prediction, fill = Freq)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = Freq), vjust = 1) +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(title = "Classification Result", x = "Prediction", y = "True Values") +
+    theme_minimal()
+}
+
+calculate_best_thresh <- function(predict_value, true_value){
+  f1_scores = list()
+  thresholds = seq(0.00, 0.99, by = 0.01)
+  for (threshold in thresholds) {
+    predict_value_temp <- factor(ifelse(predict_value > threshold, 1, 0), levels = c("0", "1"))
+    f1_scores[[as.character(threshold)]] = calculate_f1_score(predict_value_temp,y_test)
+  }
+  best_threshhold = thresholds[which.max(f1_scores)]
+  return(best_threshhold)
+}
+
+show_roc_curve(y_test, test_pred, final_model)
+show_confusion_matrix(y_test, test_pred, final_model)
+calculate_best_thresh(y_test, test_pred)

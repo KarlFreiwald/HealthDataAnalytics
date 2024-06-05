@@ -1,0 +1,81 @@
+----------------------------------------------------------------
+Without PCA:	set.seed(42)
+
+KNN:
+Best k: 4 
+         Actual
+Predicted  0  1
+        0 13  0
+        1  1  7
+
+Accuracy: 0.952381 
+F1 Score: 0.9333333 
+
+Logistic Regression (LASSO):
+Non-zero weights: 5
+         Actual
+Predicted  0  1
+        0 13  0
+        1  1  7
+Accuracy: 0.952381 
+F1 Score: 0.9333333 
+
+Logistic Regression (Ridge):
+Non-zero weights: 3571
+         Actual
+Predicted  0  1
+        0 13  0
+        1  0  8
+Accuracy: 1
+F1 Score: 1
+
+Logistic Regression (Elastic Net):
+Best alpha: 0.0
+Non-zero weights: 3571
+         Actual
+Predicted  0  1
+        0 13  0
+        1  0  8
+Accuracy: 1
+F1 Score: 1
+
+----------------------------------------------------------------
+Without PCA:	set.seed(123)
+
+KNN:
+Best k: 1 
+         Actual
+Predicted  0  1
+        0 15  1
+        1  0  5
+Accuracy: 0.952381 
+F1 Score: 0.9090909 
+
+Logistic Regression (LASSO):
+Non-zero weights: 22
+
+         Actual
+Predicted  0  1
+        0 16  0
+        1  0  5
+Accuracy: 1 
+F1 Score: 1 
+
+Logistic Regression (Ridge):
+Non-zero weights: 3571
+         Actual
+Predicted  0  1
+        0 16  0
+        1  0  5
+Accuracy: 1 
+F1 Score: 1 
+
+Logistic Regression (Elastic Net):
+Best alpha: 0.0
+Non-zero weights: 3571
+         Actual
+Predicted  0  1
+        0 16  0
+        1  0  5
+Accuracy: 1 
+F1 Score: 1 
